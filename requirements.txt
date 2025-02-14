@@ -1,0 +1,10 @@
+streamlit
+selenium
+pandas
+openpyxl
+undetected-chromedriver
+chromedriver-autoinstaller
+together
+beautifulsoup4
+setuptools
+toml
