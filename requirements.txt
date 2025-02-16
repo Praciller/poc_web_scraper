@@ -1,9 +1,7 @@
 streamlit
-selenium
 pandas
 openpyxl
-undetected-chromedriver
-chromedriver-autoinstaller
+requests
 together
 beautifulsoup4
 setuptools

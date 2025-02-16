@@ -76,10 +76,7 @@ if st.session_state.get("password_check", False):
         progress_bar.progress(percent)
 
         if scraped_data:
-            detailed_data = scrape_each_url(
-                scraped_data,
-                progress_callback=lambda current, total: None
-            )
+            detailed_data = scrape_each_url(scraped_data, progress_callback=lambda current, total: None)
         percent += 25
         progress_bar.progress(percent)
 

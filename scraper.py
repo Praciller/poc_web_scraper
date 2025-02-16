@@ -1,13 +1,14 @@
 import time
 import re
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
+import requests
+from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 
-from chrome_installer import install_chromedriver
 from logger import logger
 
-# Ensure ChromeDriver is installed
-install_chromedriver()
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; AI Web Scraper/1.0; +https://example.com)"
+}
 
 def determine_link_type_and_id(link, patterns):
     article_regex = patterns.get("article_pattern", "")
@@ -46,76 +47,69 @@ def determine_link_type_and_id(link, patterns):
 
 def scrape_all_pages(base_url, patterns):
     logger.info(f"[console.log] Starting scrape_all_pages for base URL: {base_url}")
-
-    options = uc.ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-gpu")
-
-    driver = uc.Chrome(options=options)
-    driver.get(base_url)
-    time.sleep(2)
-
     data = []
     page_number = 1
+    current_url = base_url
 
     while True:
-        logger.debug(f"[console.log] Scraping Page {page_number}...")
+        logger.debug(f"[console.log] Scraping Page {page_number}: {current_url}")
 
         try:
-            elements = driver.find_elements(By.TAG_NAME, "a")
+            response = requests.get(current_url, headers=HEADERS)
+            if response.status_code != 200:
+                logger.error(f"[console.log] Failed to retrieve {current_url} (Status: {response.status_code})")
+                break
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            elements = soup.find_all("a")
             logger.debug(f"[console.log] Found {len(elements)} <a> tags on page {page_number}.")
 
             for elem in elements:
-                link = elem.get_attribute("href")
-                text = elem.text.strip()
+                link = elem.get("href")
+                text = elem.get_text().strip() if elem.get_text() else ""
                 logger.debug(f"[console.log] Checking link: {link}  text='{text}'")
-
                 if link:
-                    ctype, cid = determine_link_type_and_id(link, patterns)
+                    full_link = urljoin(current_url, link)
+                    ctype, cid = determine_link_type_and_id(full_link, patterns)
                     if ctype:
                         data.append({
                             "Text": text,
-                            "URL": link,
+                            "URL": full_link,
                             "Type": ctype,
                             "ID": cid
                         })
-                        logger.debug(f"[console.log] Matched {ctype.upper()} => {link} (ID={cid})")
+                        logger.debug(f"[console.log] Matched {ctype.upper()} => {full_link} (ID={cid})")
 
-            next_btn = driver.find_elements(By.LINK_TEXT, str(page_number + 1))
-            if next_btn:
-                next_btn[0].click()
-                time.sleep(2)
+            # Look for a pagination link with text equal to the next page number.
+            next_page = soup.find("a", string=str(page_number + 1))
+            if next_page and next_page.get("href"):
+                current_url = urljoin(current_url, next_page.get("href"))
                 page_number += 1
+                time.sleep(2)  # Delay between pages
             else:
+                logger.info(f"[console.log] No next page found after page {page_number}.")
                 break
 
         except Exception as e:
             logger.error(f"[console.log] Error on page {page_number}: {e}")
             break
 
-    driver.quit()
     return data
 
 def scrape_each_url(scraped_data, progress_callback=None):
     logger.info("[console.log] Starting scrape_each_url for all scraped data...")
-
-    options = uc.ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-gpu")
-
-    driver = uc.Chrome(options=options)
     detailed_data = []
-
     total_items = len(scraped_data)
+
     for i, item in enumerate(scraped_data, start=1):
         try:
             logger.debug(f"[console.log] Accessing URL {i}/{total_items}: {item['URL']}")
-            driver.get(item["URL"])
-            time.sleep(2)
+            response = requests.get(item["URL"], headers=HEADERS)
+            if response.status_code != 200:
+                logger.error(f"[console.log] Failed to retrieve {item['URL']} (Status: {response.status_code})")
+                continue
 
-            full_html = driver.page_source
+            full_html = response.text
             snippet = full_html[:200].replace('\n',' ')
             logger.debug(f"[console.log] HTML snippet for {item['URL']}: {snippet}...")
 
@@ -133,7 +127,7 @@ def scrape_each_url(scraped_data, progress_callback=None):
 
         if progress_callback:
             progress_callback(i, total_items)
+        time.sleep(2)  # Delay between requests
 
-    driver.quit()
-    logger.debug(f"[console.log] All data from each URL (full HTML included): {detailed_data}")
+    logger.debug(f"[console.log] All detailed data collected: {detailed_data}")
     return detailed_data
